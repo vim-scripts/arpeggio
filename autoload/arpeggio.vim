@@ -1,5 +1,5 @@
 " arpeggio - Mappings for simultaneously pressed keys
-" Version: 0.0.0
+" Version: 0.0.1
 " Copyright (C) 2008 kana <http://whileimautomaton.net/>
 " License: MIT license  {{{
 "     Permission is hereby granted, free of charge, to any person obtaining
@@ -91,15 +91,15 @@ command! -nargs=* Arpeggiovmap  call s:cmd_map_or_list('v', 1, <q-args>)
 command! -nargs=* Arpeggioxmap  call s:cmd_map_or_list('x', 1, <q-args>)
 
 command! -bang -nargs=* Arpeggionoremap
-\        call s:cmd_map(<bang>0 ? 'ic' : 'nvo', 1, <q-args>)
-command! -nargs=* Arpeggiocnoremap  call s:cmd_map('c', 0, <q-args>)
-command! -nargs=* Arpeggioinoremap  call s:cmd_map('i', 0, <q-args>)
-command! -nargs=* Arpeggiolnoremap  call s:cmd_map('l', 0, <q-args>)
-command! -nargs=* Arpeggionnoremap  call s:cmd_map('n', 0, <q-args>)
-command! -nargs=* Arpeggioonoremap  call s:cmd_map('o', 0, <q-args>)
-command! -nargs=* Arpeggiosnoremap  call s:cmd_map('s', 0, <q-args>)
-command! -nargs=* Arpeggiovnoremap  call s:cmd_map('v', 0, <q-args>)
-command! -nargs=* Arpeggioxnoremap  call s:cmd_map('x', 0, <q-args>)
+\        call s:cmd_map_or_list(<bang>0 ? 'ic' : 'nvo', 1, <q-args>)
+command! -nargs=* Arpeggiocnoremap  call s:cmd_map_or_list('c', 0, <q-args>)
+command! -nargs=* Arpeggioinoremap  call s:cmd_map_or_list('i', 0, <q-args>)
+command! -nargs=* Arpeggiolnoremap  call s:cmd_map_or_list('l', 0, <q-args>)
+command! -nargs=* Arpeggionnoremap  call s:cmd_map_or_list('n', 0, <q-args>)
+command! -nargs=* Arpeggioonoremap  call s:cmd_map_or_list('o', 0, <q-args>)
+command! -nargs=* Arpeggiosnoremap  call s:cmd_map_or_list('s', 0, <q-args>)
+command! -nargs=* Arpeggiovnoremap  call s:cmd_map_or_list('v', 0, <q-args>)
+command! -nargs=* Arpeggioxnoremap  call s:cmd_map_or_list('x', 0, <q-args>)
 
 command! -bang -nargs=* Arpeggiounmap
 \        call s:cmd_unmap(<bang>0 ? 'ic' : 'nvo', <q-args>)
@@ -119,20 +119,21 @@ command! -nargs=* Arpeggioxunmap  call s:cmd_unmap('x', <q-args>)
 
 
 
-" Mappings  "{{{1
-
-noremap <SID>  <Nop>
-noremap! <SID>  <Nop>
-lnoremap <SID>  <Nop>
-
-
-
-
-
-
-
-
 " Functions  "{{{1
+function! arpeggio#list(modes, options, ...)  "{{{2
+  let lhs = 1 <= a:0 ? a:1 : 0
+  let opt_buffer = a:options =~# 'b' ? '<buffer>' : ''
+
+  for mode in s:each_char(a:modes)
+    execute printf('%smap %s <SID>success:%s',
+    \              mode, opt_buffer, lhs is 0 ? '' : lhs)
+  endfor
+  return
+endfunction
+
+
+
+
 function! arpeggio#load()  "{{{2
   " Does nothing - calling this function does source this script file.
 endfunction
@@ -151,9 +152,16 @@ endfunction
 
 
 function! arpeggio#unmap(modes, options, lhs)  "{{{2
+  let v:errmsg = ''
+
   for mode in s:each_char(a:modes)
     call s:unmap(mode, a:options, s:split_to_keys(a:lhs))
   endfor
+
+  if v:errmsg != ''
+    echoerr v:errmsg
+  endif
+  return v:errmsg == ''
 endfunction
 
 
@@ -188,27 +196,12 @@ endfunction
 
 
 
-function! s:cmd_list(modes, options, lhs)  "{{{2
-  throw 'NIY'
-endfunction
-
-
-
-
-function! s:cmd_map(modes, remap_p, q_args)  "{{{2
-  let [options, lhs, rhs] = s:parse_args(a:q_args)
-  return arpeggio#map(a:modes, options, a:remap_p, lhs, rhs)
-endfunction
-
-
-
-
 function! s:cmd_map_or_list(modes, remap_p, q_args)  "{{{2
   let [options, lhs, rhs] = s:parse_args(a:q_args)
-  if rhs is not 0
+  if rhs isnot 0
     return arpeggio#map(a:modes, options, a:remap_p, lhs, rhs)
   else
-    return s:cmd_list(a:modes, options, lhs)
+    return arpeggio#list(a:modes, options, lhs)
   endif
 endfunction
 
@@ -216,7 +209,8 @@ endfunction
 
 
 function! s:cmd_unmap(modes, q_args)  "{{{2
-  throw 'NIY'
+  let [options, lhs, rhs] = s:parse_args(a:q_args)
+  return arpeggio#unmap(a:modes, options, lhs)
 endfunction
 
 
@@ -259,7 +253,38 @@ endfunction
 
 
 function! s:parse_args(q_args)  "{{{2
-  throw 'NIY'
+  " Parse <q-args> for :map commands into {options}, {lhs} and {rhs}.
+  " Omitted arguments are expressed as 0.
+  let ss = s:split_to_keys(a:q_args)
+
+  let options = ''
+  let ss = s:skip_spaces(ss)
+  while 0 < len(ss)
+    if ss[0] =~? '<buffer>'
+      let options .= 'b'
+    elseif ss[0] =~? '<expr>'
+      let options .= 'e'
+    elseif ss[0] =~? '<silent>'
+      let options .= 's'
+    else
+      break
+    endif
+    let ss = s:skip_spaces(ss[1:])
+  endwhile
+
+  let i = 0
+  while i < len(ss)
+    if ss[i] =~ '\s'
+      break
+    endif
+    let i += 1
+  endwhile
+  let lhs = 1 <= i ? join(ss[:i-1], '') : 0
+  let ss = s:skip_spaces(ss[(i):])
+
+  let rhs = 0 < len(ss) ? join(ss, '') : 0
+
+  return [options, lhs, rhs]
 endfunction
 
 
@@ -300,19 +325,21 @@ endfunction
 
 
 function! s:unmap(mode, options, keys)  "{{{2
+  " FIXME: How about temporary key mappings "<SID>work:"?
   let opt_buffer = a:options =~# 'b' ? '<buffer>' : ''
 
   for key in a:keys
-    execute printf('%sunmap %s %s',
-    \              a:mode, opt_buffer, key)
+    silent! execute printf('%sunmap %s %s',
+    \                      a:mode, opt_buffer, key)
   endfor
 
   for combo in s:permutations(a:keys, len(a:keys))
-    execute printf('%sunmap %s <SID>success:%s',
-    \              a:mode,
-    \              s:to_map_arguments(a:options),
-    \              combo)
+    silent! execute printf('%sunmap %s <SID>success:%s',
+    \                      a:mode,
+    \                      s:to_map_arguments(a:options),
+    \                      combo)
   endfor
+
   return
 endfunction
 
@@ -352,6 +379,17 @@ function! s:set_up_options()  "{{{3
   set noshowcmd  " To avoid flickering in the bottom line.
   let &timeoutlen = g:arpeggio_timeoutlen
   return
+endfunction
+
+
+function! s:skip_spaces(ss)  "{{{3
+  let i = 0
+  for i in range(len(a:ss))
+    if a:ss[i] !~# '\s'
+      break
+    endif
+  endfor
+  return a:ss[(i):]
 endfunction
 
 
