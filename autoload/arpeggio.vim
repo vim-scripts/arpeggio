@@ -1,5 +1,5 @@
 " arpeggio - Mappings for simultaneously pressed keys
-" Version: 0.0.2
+" Version: 0.0.3
 " Copyright (C) 2008 kana <http://whileimautomaton.net/>
 " License: MIT license  {{{
 "     Permission is hereby granted, free of charge, to any person obtaining
@@ -126,6 +126,15 @@ endfunction
 
 
 " Core  "{{{1
+function! arpeggio#_do(script)  "{{{2
+  let _ = split(substitute(a:script, '^\s\+', '', ''), '^\S\+\zs')
+  execute 'Arpeggio'._[0] join(_[1:], '')
+  return
+endfunction
+
+
+
+
 function! arpeggio#_map_or_list(modes, remap_p, q_args)  "{{{2
   let [options, lhs, rhs] = s:parse_args(a:q_args)
   if rhs isnot 0
@@ -155,7 +164,7 @@ endfunction
 
 
 function! s:chord_key(key)  "{{{2
-  call s:set_up_options()
+  call s:set_up_options(a:key)
   return s:SID . 'work:' . a:key  " <SID>work:...
 endfunction
 
@@ -173,6 +182,22 @@ endfunction
 function! s:do_map(mode, options, remap_p, keys, rhs)  "{{{2
   " Assumption: Values in a:keys are <>-escaped, e.g., "<Tab>" not "\<Tab>".
   let opt_buffer = a:options =~# 'b' ? '<buffer>' : ''
+
+  let already_mapped_p = 0
+  for key in a:keys
+    let rhs = maparg(key, a:mode)
+    if rhs != '' && rhs !=# ('<SNR>' . matchstr(s:SID, '\d\+') . '_'
+    \                        . 'chord_key(' . string(key) . ')')
+      echohl WarningMsg
+      echomsg 'Key' string(key) 'is already mapped in mode' string(a:mode)
+      echohl None
+      let already_mapped_p = !0
+    endif
+  endfor
+  if a:options =~# 'u' && already_mapped_p
+    echoer 'Abort to map because of the above reason'
+    return
+  endif
 
   for key in a:keys
     execute printf('%smap <expr> %s %s  <SID>chord_key(%s)',
@@ -262,6 +287,8 @@ function! s:parse_args(q_args)  "{{{2
       let options .= 'e'
     elseif ss[0] =~? '<silent>'
       let options .= 's'
+    elseif ss[0] =~? '<unique>'
+      let options .= 'u'
     else
       break
     endif
@@ -329,12 +356,12 @@ endfunction
 
 
 
-function! s:set_up_options()  "{{{2
+function! s:set_up_options(key)  "{{{2
   let s:original_showcmd = &showcmd
   let s:original_timeoutlen = &timeoutlen
 
   set noshowcmd  " To avoid flickering in the bottom line.
-  let &timeoutlen = g:arpeggio_timeoutlen
+  let &timeoutlen = get(g:arpeggio_timeoutlens, a:key, g:arpeggio_timeoutlen)
   return
 endfunction
 
@@ -364,7 +391,7 @@ endfunction
 
 
 function! s:to_map_arguments(options)  "{{{2
-  let _ = {'b': '<buffer>', 'e': '<expr>', 's': '<silent>'}
+  let _ = {'b': '<buffer>', 'e': '<expr>', 's': '<silent>', 'u': '<unique>'}
   return join(map(s:each_char(a:options), '_[v:val]'))
 endfunction
 
